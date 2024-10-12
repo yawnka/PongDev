@@ -1,13 +1,3 @@
-/**
-* Author:  Yanka Sikder
-* Assignment: Simple 2D Scene
-* Date due: 2024-10-28, 11:59pm
-* I pledge that I have completed this assignment without
-* collaborating with anyone else, in conformance with the
-* NYU School of Engineering Policies and Procedures on
-* Academic Misconduct.
-**/
-
 #define GL_SILENCE_DEPRECATION
 #define STB_IMAGE_IMPLEMENTATION
 #define LOG(argument) std::cout << argument << '\n'
@@ -68,12 +58,14 @@ constexpr float ROT_INCREMENT = 1.0f;
 glm::vec3 g_cat1_position = glm::vec3(0.0f, 0.0f, 0.0f);
 glm::vec3 g_cat2_position = glm::vec3(0.0f, 0.0f, 0.0f);
 
-// for the ball
+// global variables for the ball
 glm::vec3 g_ball_position = INIT_POS_BALL;
 glm::vec3 g_ball_velocity = glm::vec3(1.0f, 1.0f, 0.0f); // spawn & start with a diagonal movement
+float g_ball_speed = 1.0f;
 
-float g_ball_speed = 3.5f;  // Ball speed multiplier
-
+// requirement 2: global variables for single-player switch
+bool is_single_player_mode = false;
+float g_cat2_auto_direction = 1.0f; // 1: moving up, -1: moving down
 
 
 SDL_Window* g_display_window;
@@ -134,7 +126,7 @@ void initialise()
     // Initialise video and joystick subsystems
     SDL_Init(SDL_INIT_VIDEO);
 
-    g_display_window = SDL_CreateWindow("Moana, Maui, HeiHei & the Kakamoras!",
+    g_display_window = SDL_CreateWindow("Stardew Valley Cats Ping Pong with Strawberry",
                                       SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                       WINDOW_WIDTH, WINDOW_HEIGHT,
                                       SDL_WINDOW_OPENGL);
@@ -187,6 +179,8 @@ void initialise()
 
 void process_input(float delta_time)
 {
+    const float PADDLE_SPEED = 4.0f;
+
     // Poll events for quit and close events
     SDL_Event event;
     while (SDL_PollEvent(&event))
@@ -195,101 +189,92 @@ void process_input(float delta_time)
         {
             g_app_status = TERMINATED;
         }
+        // 'T' key clicked will toggle single-player mode
+        if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_t) {
+            is_single_player_mode = !is_single_player_mode;
+        }
     }
 
     const Uint8 *key_state = SDL_GetKeyboardState(NULL);
 
     // Cat1 (WASD Controls)
     glm::vec3 cat1_movement = glm::vec3(0.0f);
-    // Vertical movement
     if (key_state[SDL_SCANCODE_W] && g_cat1_position.y + INIT_POS_CAT1.y + 1.0f < 3.75f) {
         cat1_movement.y = 1.0f;
     } else if (key_state[SDL_SCANCODE_S] && g_cat1_position.y + INIT_POS_CAT1.y - 1.0f > -3.75f) {
         cat1_movement.y = -1.0f;
     }
-    // Horizontal movement, constrained by central boundary
-    if (key_state[SDL_SCANCODE_A] && g_cat1_position.x + INIT_POS_CAT1.x - 1.0f > -5.0f) {
-        cat1_movement.x = -1.0f;
-    } else if (key_state[SDL_SCANCODE_D] && g_cat1_position.x + INIT_POS_CAT1.x + 1.0f < -0.5f) {
-        cat1_movement.x = 1.0f;
-    }
 
-    // Cat2 (Arrow Keys)
-    glm::vec3 cat2_movement = glm::vec3(0.0f);
-    // Vertical movement
-    if (key_state[SDL_SCANCODE_UP] && g_cat2_position.y + INIT_POS_CAT2.y + 1.0f < 3.75f) {
-        cat2_movement.y = 1.0f;
-    } else if (key_state[SDL_SCANCODE_DOWN] && g_cat2_position.y + INIT_POS_CAT2.y - 1.0f > -3.75f) {
-        cat2_movement.y = -1.0f;
-    }
-    // Horizontal movement, constrained by central boundary
-    if (key_state[SDL_SCANCODE_LEFT] && g_cat2_position.x + INIT_POS_CAT2.x - 1.0f > 0.5f) {
-        cat2_movement.x = -1.0f;
-    } else if (key_state[SDL_SCANCODE_RIGHT] && g_cat2_position.x + INIT_POS_CAT2.x + 1.0f < 5.0f) {
-        cat2_movement.x = 1.0f;
-    }
+    // Updating Cat 1 position with player control
+    g_cat1_position += cat1_movement * PADDLE_SPEED * delta_time;
 
-    // Update global movement variables based on delta_time for smooth movement
-    g_cat1_position += cat1_movement * delta_time;
-    g_cat2_position += cat2_movement * delta_time;
+    // Cat2 (Arrow Keys) allowed when game is NOT in single-player mode
+    if (!is_single_player_mode) {
+        glm::vec3 cat2_movement = glm::vec3(0.0f);
+        if (key_state[SDL_SCANCODE_UP] && g_cat2_position.y + INIT_POS_CAT2.y + 1.0f < 3.75f) {
+            cat2_movement.y = 1.0f;
+        } else if (key_state[SDL_SCANCODE_DOWN] && g_cat2_position.y + INIT_POS_CAT2.y - 1.0f > -3.75f) {
+            cat2_movement.y = -1.0f;
+        }
+        g_cat2_position += cat2_movement * PADDLE_SPEED * delta_time;
+    }
 }
 
-
-void update() {
+void update()
+{
     /* Delta time calculations */
     float ticks = (float) SDL_GetTicks() / MILLISECONDS_IN_SECOND;
     float delta_time = ticks - g_previous_ticks;
     g_previous_ticks = ticks;
 
-    // Calculate the next position
-    glm::vec3 next_ball_position = g_ball_position + g_ball_velocity * g_ball_speed * delta_time;
+    g_ball_position += g_ball_velocity * g_ball_speed * delta_time;
 
-    // Paddle 1 (Cat1) collision
-    if (next_ball_position.x - 0.5f < g_cat1_position.x + INIT_POS_CAT1.x + 0.5f &&
-        next_ball_position.x + 0.5f > g_cat1_position.x + INIT_POS_CAT1.x - 0.5f &&
-        next_ball_position.y < g_cat1_position.y + INIT_POS_CAT1.y + 1.0f &&
-        next_ball_position.y > g_cat1_position.y + INIT_POS_CAT1.y - 1.0f)
+    // Handle ball collision with Paddle 1 aka Cat 1
+    if (g_ball_position.x - 0.5f < g_cat1_position.x + INIT_POS_CAT1.x + 0.5f &&
+        g_ball_position.y < g_cat1_position.y + INIT_POS_CAT1.y + 1.0f &&
+        g_ball_position.y > g_cat1_position.y + INIT_POS_CAT1.y - 1.0f)
     {
-        g_ball_velocity.x = fabs(g_ball_velocity.x);  // Ensure positive x-velocity
-        g_ball_velocity.y = g_ball_velocity.y * -1.0f;  // Invert y-velocity to reflect bounce direction
-        next_ball_position.x = g_cat1_position.x + INIT_POS_CAT1.x + 0.6f;  // Adjust position to avoid overlap
+        g_ball_velocity.x = -g_ball_velocity.x;
     }
 
-    // Paddle 2 (Cat2) collision
-    if (next_ball_position.x + 0.5f > g_cat2_position.x + INIT_POS_CAT2.x - 0.5f &&
-        next_ball_position.x - 0.5f < g_cat2_position.x + INIT_POS_CAT2.x + 0.5f &&
-        next_ball_position.y < g_cat2_position.y + INIT_POS_CAT2.y + 1.0f &&
-        next_ball_position.y > g_cat2_position.y + INIT_POS_CAT2.y - 1.0f)
+    // Handle ball collision with Paddle 2 aka Cat 2
+    if (g_ball_position.x + 0.5f > g_cat2_position.x + INIT_POS_CAT2.x - 0.5f &&
+        g_ball_position.y < g_cat2_position.y + INIT_POS_CAT2.y + 1.0f &&
+        g_ball_position.y > g_cat2_position.y + INIT_POS_CAT2.y - 1.0f)
     {
-        g_ball_velocity.x = -fabs(g_ball_velocity.x);  // Ensure negative x-velocity
-        g_ball_velocity.y = g_ball_velocity.y * -1.0f;  // Invert y-velocity for proper bounce
-        next_ball_position.x = g_cat2_position.x + INIT_POS_CAT2.x - 0.6f;  // Adjust position to avoid overlap
+        g_ball_velocity.x = -g_ball_velocity.x;
     }
 
-    // Ball collision with top and bottom boundaries
-    if (next_ball_position.y + 0.5f > 3.75f || next_ball_position.y - 0.5f < -3.75f) {
-        g_ball_velocity.y = -g_ball_velocity.y;  // Reverse y-velocity
+    // Handle the ball colliding with top and bottom with bouncing off
+    if (g_ball_position.y + 0.5f > 3.75f || g_ball_position.y - 0.5f < -3.75f) {
+        g_ball_velocity.y = -g_ball_velocity.y;
     }
 
-    // Ball goes out of bounds (off-screen)
-    if (next_ball_position.x + 0.5f > 5.0f || next_ball_position.x - 0.5f < -5.0f) {
-        g_ball_position = INIT_POS_BALL;
-        g_ball_velocity = glm::vec3((rand() % 2 == 0 ? 1.0f : -1.0f), (rand() % 2 == 0 ? 1.0f : -1.0f), 0.0f);
+    // if ball goes out of bounds horizontally, end game
+    if (g_ball_position.x + 0.5f > 5.0f || g_ball_position.x - 0.5f < -5.0f) {
+        g_app_status = TERMINATED;
         return;
     }
 
-    // Update ball position
-    g_ball_position = next_ball_position;
+    // single-player mode paddle 2 automated movement
+    if (is_single_player_mode) {
+        g_cat2_position.y += g_cat2_auto_direction * delta_time * 2.0f;
 
-    // Update ball matrix
+        // paddle moves opposite direction once it hits a boundary (top or bottom)
+        if (g_cat2_position.y + INIT_POS_CAT2.y + 1.0f > 3.75f ||
+            g_cat2_position.y + INIT_POS_CAT2.y - 1.0f < -3.75f) {
+            g_cat2_auto_direction *= -1.0f;
+        }
+    }
+
+    // Updating transformation matrices for ball and paddles
     g_ball_matrix = glm::translate(glm::mat4(1.0f), g_ball_position);
     g_ball_matrix = glm::scale(g_ball_matrix, BALL_SCALE);
 
-    // Update paddle positions as before
     g_cat1_matrix = glm::translate(glm::mat4(1.0f), INIT_POS_CAT1 + g_cat1_position);
-    g_cat2_matrix = glm::translate(glm::mat4(1.0f), INIT_POS_CAT2 + g_cat2_position);
-
     g_cat1_matrix = glm::scale(g_cat1_matrix, INIT_SCALE);
+
+    g_cat2_matrix = glm::translate(glm::mat4(1.0f), INIT_POS_CAT2 + g_cat2_position);
     g_cat2_matrix = glm::scale(g_cat2_matrix, INIT_SCALE);
 }
 
@@ -352,14 +337,16 @@ int main(int argc, char* argv[])
 
     while (g_app_status == RUNNING)
     {
-        // Delta time calculations
+        // Calculate delta_time at the beginning of the loop
         float ticks = (float) SDL_GetTicks() / MILLISECONDS_IN_SECOND;
         float delta_time = ticks - g_previous_ticks;
-        g_previous_ticks = ticks;
 
-        process_input(delta_time); // Pass delta_time here
+        process_input(delta_time);
         update();
         render();
+
+        // Update g_previous_ticks after processing
+        g_previous_ticks = ticks;
     }
 
     shutdown();
